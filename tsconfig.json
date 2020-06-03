@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "strict": true,
+    "declaration": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "lib": ["es5", "es6", "es2015", "dom"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "rootDir": "./src",
+    "target": "ES2015",
+    "outDir": "build",
+    "typeRoots": ["types"],
+    "jsx": "react",
+    "types": ["node"]
+  },
+  "exclude": [],
+  "include": [
+    "src/*.tsx",
+    "src/*.ts",    
+  ],
+  "compileOnSave": false
+}
