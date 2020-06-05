@@ -9,15 +9,20 @@ import * as T from './types'
     }
 
     //simple
-    const op1: T.Select<['name'], T> = {name: '123'}
+    const op1: T.Select<'name', T> = {name: '123'}
     //two fields
-    const op2: T.Select<['name', 'id'], T> = {name: '123', id: 123}
+    const op2: T.Select<'name'| 'id', T> = {name: '123', id: 123}
     //arrays:
-    const op3: T.Select<['name', 'id'], T[]> = [{name: 'foo', id: 123}]
-    //undefined
-    const op4: T.Select<undefined, []> = {}
+    const op3: T.Select<'name'|'id', T[]> = [{name: 'foo', id: 123}]
+    const op4: T.Select<string, T> = {id: 1, name: 'foo', createdAt: new Date()}
     //empty
-    const op5: T.Select<[], T> = {}
+    const op5: T.Select<never, T> = {} as T.AlwaysEmpty
+    //ignore non existing keys
+    const op6: T.Select<'non-existing-key'|'name', T> = {name: '1'} 
+    //Non existing keys leads to empty
+    const op7: T.Select<'non-existing-key', T> = {} as T.AlwaysEmpty
+    //undefined
+    const op8: T.Select<undefined, T> = {} as T.AlwaysEmpty
 });
 
 //Where
@@ -55,21 +60,14 @@ import * as T from './types'
         }
     }
 
-    //select: Row<T, {select: ['id']}> => {id: number}
-    let r1: T.Row<T, {select: ['id']}> = {id: 1}                                       
+    let r1: T.Row<T, {select: 'id', where: {}, include: {}}> = {id: 1}                                       
 
-    //include:
-    // Row<T, {include: {project: {select: ['name']}}}> 
-    // => {project: {name: 'string'}}
-    let r3: T.Row<T, {include: {project: {select: ['name']}}}> = {project: {name: 'foo'}} 
-
-    //Combined
-    let r4: T.Row<T, {select: ['id'], include: {project: {select: ['name']}}}> 
-        = {id: 123, project: {name: 'foo'}} 
+    let r3: T.Row<T, {select: never, 
+                      where: {}, 
+                      include: {project: {select: 'name', where: {}, include: {}}}}> = 
+            {project: {name: 'foo'}} 
 
     //select narrowing:
-    let r5: T.Row<T, {select: ['id'], where: {id: 12}}> = {id: 12}
-    r5 = {id: 12} //typeof name is string
-    //@ts-expect-error
-    r5 = {id: 13, name} //typeof id is 12    
+    let r5: T.Row<T, {select: 'id'|'name', where: {id: 12}, include: {}}> = {id: 12, name: 'foo'}
+    const a5: 12 = r5.id
 })

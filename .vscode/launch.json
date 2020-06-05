@@ -19,11 +19,11 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Launch sql.ts",
+            "name": "Launch playground",
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}/build/sql-ts.js",
+            "program": "${workspaceFolder}/build/playground.js",
             "outFiles": [
                 "${workspaceFolder}/**/*.js"
             ]

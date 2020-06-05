@@ -1,5 +1,6 @@
 import {Row} from './types'
 import {Table} from './db'
+import Knex = require('knex')
 
 export const omnifocusCfg = {
     client: 'sqlite3', 
@@ -8,12 +9,33 @@ export const omnifocusCfg = {
     }
 } as const
 
-const taskTable = new Table<Task, TaskQuery>('Task', omnifocusCfg)
- 
+
+//https://github.com/zenspider/bin/blob/8e611288e2c54af390f59e228a01bb1af7bd61e8/of_common.rb
+
 async function main(){
-    const row = await taskTable.first({select: ['name'], where: {inInbox: true}})    
-    console.info(row.name)
-    taskTable.knex.destroy()
+    const knex = Knex(omnifocusCfg)
+    const tasks = new Table<Task, TaskQuery>('Task', knex)
+    const inInbox = tasks.where({inInbox: true})
+    const notFinished = tasks.where({dateCompleted: null})
+
+    //Let's create a function that takes a task (with two required fields) and renders a markdown link.
+    //Note that access to attributes on the task object is fully typechecked
+    const linkView = tasks.select('persistentIdentifier', 'name')
+                          .fn((task) => `[${task.name}](omnifocus:///task/${task.persistentIdentifier})`)
+
+    //Now we'll create a a function that takes a list of tasks and turns each task into a link
+    //Note that the function doesn't explicitly mention the required fields but still the code is fully typechecked
+    const taskListView = tasks.select(linkView.requiredColumns)
+                              .listFn((tasks) => tasks.map(linkView).join('\n'))
+
+  
+    //Now let's fetch the required data. Note again that we don't need to mention the required columns directly
+    const rows = await inInbox.and(notFinished).select(linkView.requiredColumns).all()
+    
+    //Now let's use the returned data. Note that the typechecker guarantees that the query matches the fields accessed
+    console.log(taskListView(rows))        
+
+    knex.destroy()
 }
 
 main()
@@ -21,81 +43,31 @@ main()
 
 type Project = {
     name: string
-    createdAt: Date,
+    persistentIdentifier: string
     tasks: Task[]
 }
 
 type ProjectQuery = Readonly<{
-    select?: Readonly<('name'|'createdAt')[]>,
+    select?: 'name'|'persistentIdentifier',
     include?: Readonly<{
         tasks: TaskQuery
     }>
 }>
 
 type Task = {
-    id: string,
+    persistentIdentifier: string,
     name: string
     inInbox: boolean,
-    createdAt: Date,
-    project: Project
+    project: Project,
+    dateCompleted: Date
 }
 
 type TaskQuery = Readonly<{
-    select?: Readonly<('id'|'name'|'inInbox'|'createdAt')[]>,
-    include?: Readonly<{
-        project?: ProjectQuery
-    }>, 
-    where?: Readonly<{
-        id?: string | Readonly<string []>,
-        inInbox?: boolean
+    select: ('id'|'name'|'inInbox'|'dateCompleted'|'persistentIdentifier'),
+    include: {}
+    where: Readonly<{
+        persistentIdentifier?: string,
+        inInbox?: boolean,
+        dateCompleted?: Date | null
     }>
 }>
-
-declare function getTask<Q extends TaskQuery>(query: Q): Row<Task, Q>
-
-(() => {
-    let v1 = getTask({select: ['id']})
-    const a1:string = v1.id
-    v1 = { id: '123' }
-    //@ts-expect-error
-    v1.name //name not in select
-
-    let v2 = getTask({select: ['id', 'name']})
-    const a2:string = v2.name
-    v2 = { id: '123', name: '123'}
-
-    let v3 = getTask({include: {project: {select: ['name']}}})
-    const a3: string = v3.project.name
-    //@ts-expect-error
-    v3.project.createdAt //not in nested select    
-
-    //double nested and `tasks` is a collection
-    let v4 = getTask({include: {project: {include: {tasks: {select: ['name']}}}}})
-    const a4: string = v4.project.tasks[0].name
-    v4.project.tasks[0].name
-
-    function v<S extends string|number|Date>(v: S): S {
-        return v
-    }
-    
-    //where narrowing 
-    const v5 = getTask({select: ['inInbox'], where: {inInbox: true})
-    const a5: true = v5.inInbox
-    
-    // Since typeof id is string | string[] the typechecker is more aggressive on wideing values 
-    // than it's the case with the `inInbox: true` example above
-    // Either add `as const` around the query or wrap indvidual values in `v(...)`
-    const v6 = getTask({select: ['id'], where: {id: v('2')}}) 
-    const a6:'2' = v6.id
-
-    const v7 = getTask({select: ['id'], where: {id: [v('4'), v('5')]}}) 
-    const a7:'4'|'5' = v7.id
-
-    const v8 = getTask({select: ['id'], where: {id: ['7', '8']}} as const) 
-    const a8:'7'|'8' = v8.id
-
-    let v9 = getTask({select: ['id'], where: {id: '1'}})
-    v9 = {id: '2'} //typeof `id` is string because we didn't add `as const` or use `v(...)`
-    
-})
-
