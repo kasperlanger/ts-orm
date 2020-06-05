@@ -30,7 +30,7 @@ async function main(){
 
   
     //Now let's fetch the required data. Note again that we don't need to mention the required columns directly
-    const rows = await inInbox.and(notFinished).select(linkView.requiredColumns).all()
+    const rows = await inInbox.and(notFinished).select(taskListView.requiredColumns).all()
     
     //Now let's use the returned data. Note that the typechecker guarantees that the query matches the fields accessed
     console.log(taskListView(rows))        
