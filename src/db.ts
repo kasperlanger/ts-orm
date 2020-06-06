@@ -32,6 +32,8 @@ class Where<T,Q extends Query, W extends Q['where']> {
 class Select<T,Q extends Query, S extends Q['select']> {
     readonly table: Table<T,Q>
     readonly cols: S[]
+    readonly single!: Row<T, {select: S, where: {}, include: {}}>
+    readonly many!: Row<T, {select: S, where: {}, include: {}}>[]
 
     constructor(table: Table<T,Q>, select: S[]){
         this.table = table
@@ -51,7 +53,7 @@ class Select<T,Q extends Query, S extends Q['select']> {
 
     fn<RT, 
        R extends Row<T, {select: S, where: {}, include: {}}>, 
-       F extends (r:R) => RT> 
+       F extends (r: {task:R}) => RT> 
         (fn: F): F & {requiredColumns: Select<T,Q,S>, row: R, rows: R[]}{
             return Object.assign(fn, {requiredColumns: this, row: {} as R, rows: {} as R[] })
     }
@@ -108,6 +110,8 @@ class SelectWhere<T,Q extends Query, S extends Q['select'], W extends Q['where']
 export class Table<T,Q extends Query> {
     readonly name: string
     readonly knex: Knex
+    readonly sel!: [Q['select']]
+    
     
     constructor(name: string, knex: Knex){
         this.name = name
