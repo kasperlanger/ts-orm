@@ -1,129 +1,137 @@
-import {Query, Row} from './types'
+import {Query, Row, RelsDef} from './types'
 import Knex = require('knex')
 import _ = require('lodash')
-import { exception } from 'console'
 
-class Where<T,Q extends Query, W extends Q['where']> {
-    readonly table: Table<T,Q>
-    readonly pred: W
+class Predicate {
 
-    constructor(table: Table<T,Q>, where: W){
-        this.table = table
-        this.pred = where
+}
+
+function mergePreds<W1, W2>(w1:W1, w2:W2): W1&W2{
+    return _.merge(w1,w2)
+}
+
+export type RelSpec = {
+    type: 'belongsTo' | 'hasMany',
+    fk: string,
+    key: string,
+    table: string
+} 
+
+const relNames:RelNames<typeof rels, 'ProjectInfo', 'hasMany'> = 'tasks'
+const info:RelInfo<typeof rels, 'ProjectInfo', 'tasks'> = {relType: 'hasMany', table: 'Task', fk: 'containingProjectInfo', key: 'pk', name: 'tasks'}
+
+
+export function relsDef<S extends Record<string, {}>>() {
+    return function<R extends RelsDef<S>>(rd: R): R{
+        return rd
     }
+}
+  
+type TableSpec = {
+    row: Record<string, any>,
+    rels: Record<string, RelSpec>
+}
 
-    select<S extends Q['select']>(...s: (S|Select<T,Q,S>)[]): SelectWhere<T,Q,S,W>{  
-        return new SelectWhere<T,Q,S,W>({select: new Select(this.table, []).andSelect(...s), where: this})
-    }
-
-    and<W1 extends Q['where']>(w: W1|Where<T,Q,W1>): Where<T,Q,W&W1> {
-        if (w instanceof Where){
-            return new Where(this.table, _.merge(this.pred, w.pred))
-        } else {
-            return new Where(this.table, _.merge(this.pred, w))
+type RowType<TS extends TableSpec, C extends keyof TS['row'], I extends {}> =
+    Pick<TS['row'], C> & I //TODO handle row is empty (i.e. `never`) 
+    
+type InferInclude<K extends string|number|symbol, SW> = 
+    SW extends SelectWhere<any, infer TS, infer C, infer I> ? 
+        {
+            [K1 in K]?: RowType<TS, C, I>
         }
-    }
+    : 'InferInclude Fail' 
 
-    first(){
-        return this.select().first()
-    }
-}
 
-class Select<T,Q extends Query, S extends Q['select']> {
-    readonly table: Table<T,Q>
-    readonly cols: S[]
-    readonly single!: Row<T, {select: S, where: {}, include: {}}>
-    readonly many!: Row<T, {select: S, where: {}, include: {}}>[]
+class SelectWhere<N extends string,                         //name of table to ensure things line up when including and merging two queries
+                  TS extends TableSpec,                     //types needed to infer return type and includes
+                  C extends keyof TS['row'],                //Columns to include in return type
+                  I extends {}>                             //Type of included associations
+                  {  
 
-    constructor(table: Table<T,Q>, select: S[]){
+    //TODO consider merging the stuff that doesn't change i.e name, rels, etc to on field so there's less stuff to pass on
+    readonly table: Table<N, TS['row'], TS['rels']>
+    readonly rels: Record<keyof I, SelectWhere<any, any, any, any>> 
+
+    //consider mergin the stuff that does change to a single attribute as well
+    readonly cols: C[]
+    readonly preds: Record<keyof TS['row'], any> 
+
+    readonly single!: RowType<TS, C, I>
+    readonly many!: RowType<TS, C, I>[]
+
+    
+    constructor(table: Table<N, TS['row'], TS['rels']>, cols: C[], preds: Record<keyof TS['row'], Predicate>, rels: Record<keyof I, SelectWhere<any, any, any, any>>){
         this.table = table
-        this.cols = select
+        this.cols = cols
+        this.preds = preds
+        this.rels = rels
     }
 
-    where<W extends Q['where']>(w: W){
-        return new SelectWhere<T,Q,S,W>({select: this, where: new Where(this.table, w)}) 
+    select<C1 extends keyof TS['row']>(s: C1|SelectWhere<N,TS, C1, any>, ...rest: C1[]): SelectWhere<N,TS,C|C1,I> {
+        const cols = s instanceof SelectWhere ? [...this.cols, ...s.cols] : [...this.cols, s, ...rest]
+        return new SelectWhere<N,TS,C|C1,I>(this.table, cols, this.preds, this.rels) 
     }
 
-    andSelect<S1 extends Q['select']>(...s: (S1|Select<T,Q,S1>)[]): Select<T, Q, S|S1>{
-        const values = _.flatMap(s, (v) => (
-            v instanceof Select ? v.cols : [v]
-        ))
-        return new Select(this.table, [...this.cols, ...values])
+    where<W1 extends Partial<TS['row']>>(w: W1|SelectWhere<N,TS,never,any>): SelectWhere<N,TS,C,I> { //todo narrow type where possible
+        let sw = w instanceof SelectWhere ? w.where : w
+        const preds = mergePreds(this.preds, sw)
+        return new SelectWhere<N,TS,C,I>(this.table, this.cols, preds, this.rels)
     }
 
-    fn<RT, 
-       R extends Row<T, {select: S, where: {}, include: {}}>, 
-       F extends (r: {task:R}) => RT> 
-        (fn: F): F & {requiredColumns: Select<T,Q,S>, row: R, rows: R[]}{
-            return Object.assign(fn, {requiredColumns: this, row: {} as R, rows: {} as R[] })
+    include<K extends keyof TS['rels'], 
+            S extends SelectWhere<TS['rels'][K]['table'],any,any,any>>
+        (rel: K, s: S): SelectWhere<N,TS,C, I & InferInclude<K,S>> {
+            return new SelectWhere<N,TS,C,I & InferInclude<K,S>>(this.table, this.cols, this.preds, {...this.rels, [rel]: s} as any)
+        }
+    
+    async first(): Promise<RowType<TS, C, I>> {
+        const all = await this.all() //TODO add limit
+        return all[0]
     }
 
-    listFn<RT, 
-            R extends Row<T, {select: S, where: {}, include: {}}>, 
-            F extends (r:R[]) => RT> 
-            (fn: F): F & {requiredColumns: Select<T,Q,S>, row: R, rows: R[]}{
-                return Object.assign(fn, {requiredColumns: this, row: {} as R, rows: {} as R[] })
-    }
-
-
-    first(){
-        return this.where({}).first()
-    }
-}
-
-class SelectWhere<T,Q extends Query, S extends Q['select'], W extends Q['where']> {
-    readonly where: Where<T,Q,W>
-    readonly select: Select<T,Q,S>
-    constructor({where, select}: {where: Where<T,Q,W>, select: Select<T,Q,S>}){
-        [this.where, this.select] = [where, select]
-    }
-
-    and<W1 extends Q['where']>(where: W1|Where<T,Q,W1>) : SelectWhere<T,Q,S,W&W1>  {
-        return new SelectWhere({where: this.where.and(where), select: this.select})
-    }
-
-    andSelect<S1 extends Q['select']>(...select: (S1|Select<T,Q,S1>)[]) : SelectWhere<T,Q,S|S1,W>{
-        return new SelectWhere({where: this.where, select: this.select.andSelect(...select)}) 
-    }
-
-    merge<S1 extends Q['select'], W1 extends Q['where']>(q: SelectWhere<T,Q,S1,W1>){
-        return this.and(q.where).andSelect(q.select)
-    }
-
-    async first(): Promise<Row<T, {select: S, where: W, include: {}}>> {
-        const table = this.where.table
-        const knexTable = table.knex.table(table.name)
-        const where = this.where.pred
-        const res = await knexTable.where(this.where.pred as {}).first(...this.select.cols)
-        return res
-    }
-
-    async all(): Promise<Row<T, {select: S, where: W, include: {}}>[]> {
-        const table = this.where.table
-        const knexTable = table.knex.table(table.name)
-        const where = this.where.pred
-        const res = await knexTable.where(this.where.pred as {}).select(...this.select.cols)
-        return res
+    async all(): Promise<RowType<TS, C, I>[]> {
+        const knexTable = this.table.knexTable()
+        const selectFks = Object.values(this.table.relDefs).map((x) => x.fk)
+        const rows = await knexTable.where(this.preds).select(...selectFks, ...(this.cols as string[]))
+        for (let rel in this.rels){
+            for (let row of rows){
+                let relDef = this.table.relDefs[rel]
+                //TOOD remove
+                row[rel] = await this.rels[rel].where({[relDef.key]: row[relDef.fk]}).first()
+            }
+        }
+        return rows
     }
 }
 
-export class Table<T,Q extends Query> {
-    readonly name: string
+export function table<T extends {}>(knex: Knex){
+    return function<N extends string, R extends Record<string, RelSpec>>(name: N, rels: R){
+        return new Table<N, T, R>(name, knex, rels)
+    }
+}
+
+export class Table<N extends string, T extends {}, R extends Record<string, RelSpec>> {
+    readonly name: N
+    readonly relDefs: R
     readonly knex: Knex
-    readonly sel!: [Q['select']]
     
-    
-    constructor(name: string, knex: Knex){
+    constructor(name: N, knex: Knex, rels: R){
         this.name = name
         this.knex = knex
+        this.relDefs = rels
     }
 
-    where<W extends Q['where']>(w: W): Where<T,Q,W>{
-        return new Where(this, w)
+    knexTable() {
+        return this.knex.table(this.name)
     }
 
-    select<S extends Q['select']>(...s: (S|Select<T,Q,S>)[]): Select<T,Q,S>{
-        return new Select(this, []).andSelect(...s)
+    select<S extends keyof T>(...s: S[]): SelectWhere<N,{row:T, rels: R}, S, {}>{
+        return new SelectWhere<N,{row:T, rels: R},S, {}>(this, s, {} as any, {} as any)
+    }
+
+    where<W extends Partial<T>>(w: W): SelectWhere<N,{row:T, rels: R}, never, {}>{
+        return new SelectWhere<N,{row:T, rels: R},never, {}>(this, [], {} as any, {} as any)
     }
 }
 

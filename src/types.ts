@@ -43,3 +43,33 @@ export type Include<I extends Record<string, Query>, T> = {
         : never //the relation name `R` doesn't match an attribute on T. This shouldn't happen in practice because `Q['include']` is constrained by Query types
 }
 
+////////
+export type RelsDef<R extends Record<string, {}>> = {
+  [P in keyof R]?: {
+    belongsTo?: {
+      [C in keyof R]?: {name: string, fk: keyof R[P], key?: keyof R[C]}
+    },
+    hasMany?: {
+      [C in keyof R]?: {name: string, fk: keyof R[C], key?: keyof R[P]} 
+    }
+  }
+}
+  
+type Lookup<R extends {}, K extends string> = {
+  [K1 in keyof R]: K1 extends K ? R[K1] : never
+}[keyof R]
+
+export type RelNames<RD extends RelsDef<any>, P extends keyof RD, T extends 'belongsTo' | 'hasMany'> = {
+  [RT in keyof RD[P]]: {
+    [C in keyof RD[P][RT]]:
+    RT extends T ? Lookup<RD[P][RT][C], 'name'> : never
+  }[keyof RD[P][RT]]
+}[keyof RD[P]]
+
+export type RelInfo<RD extends RelsDef<any>, P extends keyof RD, N extends RelNames<RD, P, 'belongsTo' | 'hasMany'>> = {
+  [RT in keyof RD[P]]: {
+    [C in keyof RD[P][RT]]:
+    Lookup<RD[P][RT][C], 'name'> extends N ? RD[P][RT][C] & { relType: RT, table: C } : never
+  }[keyof RD[P][RT]]
+}[keyof RD[P]]
+  

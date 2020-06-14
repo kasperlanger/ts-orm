@@ -1,7 +1,7 @@
-import { Row } from './types'
+import { Row, RelsDef, RelNames, RelInfo } from './types'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { Table } from './db'
+import { Table, RelSpec, relsDef, table } from './db'
 import Knex = require('knex')
 
 export const omnifocusCfg = {
@@ -12,16 +12,19 @@ export const omnifocusCfg = {
 } as const
 
 
-//https://github.com/zenspider/bin/blob/8e611288e2c54af390f59e228a01bb1af7bd61e8/of_common.rb
-declare function fn(a: any, fn: any): any
+function  id<T extends string>(s:T): T {
+  return s
+}
+
 
 async function main() {
   const knex = Knex(omnifocusCfg)
-  const tasks = new Table<Task, TaskQuery>('Task', knex)
+  const tasks = table<Task>(knex)('Task', {})
+  const projects = table<ProjectInfo>(knex)('ProjectInfo', {})
 
   const inInbox = tasks.where({ inInbox: true })
   const notFinished = tasks.where({ dateCompleted: null })
-
+  
   const taskSelect = tasks.select('name', 'persistentIdentifier', 'inInbox')
   const TaskView = ({task}: {task: typeof taskSelect.single}) => (
       <li>
@@ -36,44 +39,99 @@ async function main() {
     <ul>{tasks.map(t => <TaskView key={t.persistentIdentifier} task={t} />)}</ul>
   )
 
-  //Now let's fetch the required data. Note again that we don't need to mention the required columns directly
-  const rows = await inInbox.and(notFinished).select(taskSelect).all()
+  // //Now let's fetch the required data. Note again that we don't need to mention the required columns directly
+  const rows = await inInbox.where(notFinished).select(taskSelect).all()
+  
+  // //Now let's use the returned data. Note that the typechecker guarantees that the query matches the fields accessed
+  console.log(renderToStaticMarkup(<TaskListView tasks={rows.slice(0,3)} />))
 
-  //Now let's use the returned data. Note that the typechecker guarantees that the query matches the fields accessed
-  console.log(renderToStaticMarkup(<TaskListView tasks={rows.slice(0, 3)} />))
 
+  //Define relations
+  const rels = relsDef<Schema>()({
+    ProjectInfo: {
+      belongsTo: {
+        Task: {name: id('task'), fk: 'pk', key: 'persistentIdentifier'} 
+      }, 
+      hasMany: {
+        Task: {name: id('tasks'), fk: 'containingProjectInfo', key: 'pk'},
+      }
+    }, 
+    Task: {
+      belongsTo: {
+        ProjectInfo: {name: id('project'), fk: 'containingProjectInfo', key: 'pk'},
+      }
+    }
+  })
+
+  //TODO automate this
+    const rd = rels.Task.belongsTo.ProjectInfo
+    const taskRels = {
+      [rd.name]:{
+        type: 'belongsTo',
+        fk: rd.fk,
+        key: rd.key,
+        table: 'ProjectInfo'
+      } as const
+    }
+    const tasks2 = table<Task>(knex)('Task', taskRels)
+  
+    const t = await tasks2.select('name')
+                          .include('project', projects.select('effectiveStatus')).first()
+  
+    console.info({name: t.name, projectStatus: t.project?.effectiveStatus})
+  
   knex.destroy()
 }
 
 main()
 
 
-type Project = {
-  name: string
-  persistentIdentifier: string
-  tasks: Task[]
+type Schema = {
+  ProjectInfo: ProjectInfo,
+  Task: Task,
+  Foo: {
+    id: string
+  }
 }
 
-type ProjectQuery = Readonly<{
-  select?: 'name' | 'persistentIdentifier',
-  include?: Readonly<{
-    tasks: TaskQuery
-  }>
+
+type ProjectInfo = {
+  pk: string,
+  effectiveStatus: string,
+  task: string,
+}
+
+type ProjectInfoRels = {
+  task: Task,
+  tasks: Task[],
+}
+
+type ProjectInfoQuery = Readonly<{
+  select: 'pk'|'task'|'effectiveState',
+  include: {
+  }, where: {
+    task: TaskQuery,
+    tasks: TaskQuery,
+    pk?: string,
+    effectiveState?: 'dropped'|'active'|'done'
+  }
 }>
 
 type Task = {
   persistentIdentifier: string,
+  containingProjectInfo: string|null,
+  projectInfo: string|null,
   name: string
   inInbox: boolean,
-  project: Project,
-  dateCompleted: Date
+  dateCompleted: Date | null
 }
 
 type TaskQuery = Readonly<{
-  select: ('name' | 'inInbox' | 'dateCompleted' | 'persistentIdentifier'),
+  select: 'name' | 'inInbox' | 'dateCompleted' | 'persistentIdentifier' | 'containingProjectInfo',
   include: {}
   where: Readonly<{
     persistentIdentifier?: string,
+    name?: string,
     inInbox?: boolean,
     dateCompleted?: Date | null
   }>
