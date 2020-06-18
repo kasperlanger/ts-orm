@@ -1,8 +1,9 @@
 import { Row, RelsDef, RelNames, RelInfo } from './types'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { Table, RelSpec, relsDef, table } from './db'
+import { Table, RelSpec, defineDB } from './db'
 import Knex = require('knex')
+import _ = require('lodash')
 
 export const omnifocusCfg = {
   client: 'sqlite3',
@@ -11,21 +12,31 @@ export const omnifocusCfg = {
   }
 } as const
 
-
-function  id<T extends string>(s:T): T {
-  return s
-}
-
-
 async function main() {
   const knex = Knex(omnifocusCfg)
-  const tasks = table<Task>(knex)('Task', {})
-  const projects = table<ProjectInfo>(knex)('ProjectInfo', {})
 
+  const db = defineDB<Schema>(knex)({
+    Task: {
+      belongsTo: {
+        ProjectInfo: {name: 'project' as const, fk: 'containingProjectInfo', key: 'pk'}
+      }
+    },
+    ProjectInfo: {
+      belongsTo: {
+        Task: {name: 'task' as const, fk: 'task', key: 'persistentIdentifier'}
+      }
+    }
+    
+  })
+      
+  const tasks = db('Task')
+  const projects = db('ProjectInfo')
+  
   const inInbox = tasks.where({ inInbox: true })
   const notFinished = tasks.where({ dateCompleted: null })
   
   const taskSelect = tasks.select('name', 'persistentIdentifier', 'inInbox')
+  
   const TaskView = ({task}: {task: typeof taskSelect.single}) => (
       <li>
         <a href={`omnifocus:///task/${task.persistentIdentifier}`}>
@@ -45,40 +56,11 @@ async function main() {
   // //Now let's use the returned data. Note that the typechecker guarantees that the query matches the fields accessed
   console.log(renderToStaticMarkup(<TaskListView tasks={rows.slice(0,3)} />))
 
+  const t = await tasks.select('name', 'inInbox')
+                       .include('project', projects.select('effectiveStatus')
+                                                   .include('task', tasks.select('name'))).first()
 
-  //Define relations
-  const rels = relsDef<Schema>()({
-    ProjectInfo: {
-      belongsTo: {
-        Task: {name: id('task'), fk: 'pk', key: 'persistentIdentifier'} 
-      }, 
-      hasMany: {
-        Task: {name: id('tasks'), fk: 'containingProjectInfo', key: 'pk'},
-      }
-    }, 
-    Task: {
-      belongsTo: {
-        ProjectInfo: {name: id('project'), fk: 'containingProjectInfo', key: 'pk'},
-      }
-    }
-  })
-
-  //TODO automate this
-    const rd = rels.Task.belongsTo.ProjectInfo
-    const taskRels = {
-      [rd.name]:{
-        type: 'belongsTo',
-        fk: rd.fk,
-        key: rd.key,
-        table: 'ProjectInfo'
-      } as const
-    }
-    const tasks2 = table<Task>(knex)('Task', taskRels)
-  
-    const t = await tasks2.select('name')
-                          .include('project', projects.select('effectiveStatus')).first()
-  
-    console.info({name: t.name, projectStatus: t.project?.effectiveStatus})
+  console.info({name: t.name, projectTaskName: t.project?.task?.name})
   
   knex.destroy()
 }
@@ -89,33 +71,13 @@ main()
 type Schema = {
   ProjectInfo: ProjectInfo,
   Task: Task,
-  Foo: {
-    id: string
-  }
 }
-
 
 type ProjectInfo = {
   pk: string,
   effectiveStatus: string,
   task: string,
 }
-
-type ProjectInfoRels = {
-  task: Task,
-  tasks: Task[],
-}
-
-type ProjectInfoQuery = Readonly<{
-  select: 'pk'|'task'|'effectiveState',
-  include: {
-  }, where: {
-    task: TaskQuery,
-    tasks: TaskQuery,
-    pk?: string,
-    effectiveState?: 'dropped'|'active'|'done'
-  }
-}>
 
 type Task = {
   persistentIdentifier: string,
@@ -125,14 +87,3 @@ type Task = {
   inInbox: boolean,
   dateCompleted: Date | null
 }
-
-type TaskQuery = Readonly<{
-  select: 'name' | 'inInbox' | 'dateCompleted' | 'persistentIdentifier' | 'containingProjectInfo',
-  include: {}
-  where: Readonly<{
-    persistentIdentifier?: string,
-    name?: string,
-    inInbox?: boolean,
-    dateCompleted?: Date | null
-  }>
-}>

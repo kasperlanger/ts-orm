@@ -45,9 +45,9 @@ export type Include<I extends Record<string, Query>, T> = {
 
 ////////
 export type RelsDef<R extends Record<string, {}>> = {
-  [P in keyof R]?: {
+  [P in string & keyof R]?: {
     belongsTo?: {
-      [C in keyof R]?: {name: string, fk: keyof R[P], key?: keyof R[C]}
+      [C in string & keyof R]?: {name: string, fk: string & keyof R[P], key?: string & keyof R[C]}
     },
     hasMany?: {
       [C in keyof R]?: {name: string, fk: keyof R[C], key?: keyof R[P]} 
@@ -55,21 +55,25 @@ export type RelsDef<R extends Record<string, {}>> = {
   }
 }
   
-type Lookup<R extends {}, K extends string> = {
+export type Lookup<R extends {}, K extends string> = string & {
   [K1 in keyof R]: K1 extends K ? R[K1] : never
 }[keyof R]
 
-export type RelNames<RD extends RelsDef<any>, P extends keyof RD, T extends 'belongsTo' | 'hasMany'> = {
+export type RelNames<RD extends RelsDef<any>, P extends keyof RD, T extends 'belongsTo' | 'hasMany' =  'belongsTo' | 'hasMany'> = {
   [RT in keyof RD[P]]: {
     [C in keyof RD[P][RT]]:
     RT extends T ? Lookup<RD[P][RT][C], 'name'> : never
   }[keyof RD[P][RT]]
 }[keyof RD[P]]
 
+
+//Should return something that extends `RelSpec` but I don't know how to ensure that
 export type RelInfo<RD extends RelsDef<any>, P extends keyof RD, N extends RelNames<RD, P, 'belongsTo' | 'hasMany'>> = {
   [RT in keyof RD[P]]: {
     [C in keyof RD[P][RT]]:
-    Lookup<RD[P][RT][C], 'name'> extends N ? RD[P][RT][C] & { relType: RT, table: C } : never
+    Lookup<RD[P][RT][C], 'name'> extends N ? RD[P][RT][C] & { type: RT, table: C } : never
   }[keyof RD[P][RT]]
 }[keyof RD[P]]
+
+
   
