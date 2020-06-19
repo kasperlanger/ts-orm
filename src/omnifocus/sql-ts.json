@@ -1,0 +1,16 @@
+{
+  "client": "sqlite3",
+  "connection": {
+    "filename": "/Users/kasperlanger/Library/Group Containers/34YW5XSRB7.com.omnigroup.OmniFocus/com.omnigroup.OmniFocus3/com.omnigroup.OmniFocusModel/OmniFocusDatabase.db"
+  },
+  "interfaceNameFormat": "${table}",
+  "tableNameCasing": "pascal",
+  "folder": "src/omnifocus",
+  "filename": "types",
+  "typeOverrides": {
+    "main.Task.inInbox": "boolean",
+    "main.Task.effectiveInInbox": "number",
+    "main.Task.flagged": "boolean",
+    "main.Task.effectiveFlagged": "number"
+  }
+}

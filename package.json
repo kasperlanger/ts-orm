@@ -4,6 +4,7 @@
   "main": "index.tsx",
   "license": "MIT",
   "dependencies": {
+    "@rmp135/sql-ts": "^1.5.1",
     "@types/chai": "^4.2.11",
     "@types/lodash": "^4.14.153",
     "@types/mocha": "^7.0.2",
@@ -19,5 +20,11 @@
     "sqlite3": "^4.2.0",
     "ts-node": "^8.10.1",
     "typescript": "^3.9.2"
+  },
+  "scripts": {
+    "knex:migrate:make": "knex migrate:make -x ts",
+    "knex:migrate:latest": "knex migrate:latest",
+    "knex:seed": "knex seed:run",
+    "sql-ts": "sql-ts -c src/omnifocus/sql-ts.json"
   }
 }
