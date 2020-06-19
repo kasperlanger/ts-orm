@@ -1,16 +1,21 @@
-import { Row, RelsDef, RelNames, RelInfo } from './types'
-import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { Table, RelSpec, defineDB } from './db'
+import { defineDB } from './db'
 import Knex = require('knex')
 import _ = require('lodash')
+import {ProjectInfo, Task} from './omnifocus/types'
+import * as React from 'react'
 
-export const omnifocusCfg = {
+export const omnifocusCfg:Knex.Config = {
   client: 'sqlite3',
   connection: {
     filename: "/Users/kasperlanger/Library/Group Containers/34YW5XSRB7.com.omnigroup.OmniFocus/com.omnigroup.OmniFocus3/com.omnigroup.OmniFocusModel/OmniFocusDatabase.db"
   }
-} as const
+}
+
+type Schema = {
+  ProjectInfo: ProjectInfo,
+  Task: Task,
+}
 
 async function main() {
   const knex = Knex(omnifocusCfg)
@@ -26,7 +31,6 @@ async function main() {
         Task: {name: 'task' as const, fk: 'task', key: 'persistentIdentifier'}
       }
     }
-    
   })
       
   const tasks = db('Task')
@@ -68,22 +72,3 @@ async function main() {
 main()
 
 
-type Schema = {
-  ProjectInfo: ProjectInfo,
-  Task: Task,
-}
-
-type ProjectInfo = {
-  pk: string,
-  effectiveStatus: string,
-  task: string,
-}
-
-type Task = {
-  persistentIdentifier: string,
-  containingProjectInfo: string|null,
-  projectInfo: string|null,
-  name: string
-  inInbox: boolean,
-  dateCompleted: Date | null
-}
