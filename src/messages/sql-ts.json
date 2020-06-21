@@ -1,0 +1,12 @@
+{
+  "client": "sqlite3",
+  "connection": {
+    "filename": "/Users/kasperlanger/Library/Messages/chat.db"
+  },
+  "interfaceNameFormat": "${table}",
+  "tableNameCasing": "pascal",
+  "folder": "src/messages",
+  "filename": "types",
+  "typeOverrides": {
+  }
+}

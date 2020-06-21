@@ -1,0 +1,12 @@
+{
+  "client": "sqlite3",
+  "connection": {
+    "filename": "/Users/kasperlanger/Library/Application Support/AddressBook/Sources/EE386D37-7575-450D-A49D-2D0826D0A5A0/AddressBook-v22.abcddb"
+  },
+  "interfaceNameFormat": "${table}",
+  "tableNameCasing": "pascal",
+  "folder": "src/contacts",
+  "filename": "types",
+  "typeOverrides": {
+  }
+}
