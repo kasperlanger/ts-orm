@@ -35,7 +35,7 @@ type InferInclude<K extends string|number|symbol, SW> =
 	: 'InferInclude fail'
 
 
-class SelectWhere<N extends string,                         //name of table to ensure things line up when including and merging two queries
+export class SelectWhere<N extends string,                         //name of table to ensure things line up when including and merging two queries
 				  TS extends TableSpec,                     //types needed to infer return type and includes
 				  C extends keyof TS['row'],                //Columns to include in return type
 				  I extends {}>                             //Type of included associations
@@ -77,10 +77,17 @@ class SelectWhere<N extends string,                         //name of table to e
 	}
 
 	async all(): Promise<RowType<TS, C, I>[]> {
-		const knexTable = this.table.knexTable()
+		let knexQuery = this.table.knexTable()
 		const selectFks = Object.values(this.table.relDefs).map((x) => x.fk)
 		//TODO no need to load selectFks when we're not loading the relation
-		const rows = await knexTable.where(this.preds).select(...selectFks, ...(this.cols as string[]))
+		_.forEach(this.preds, (predVal, predKey) => {
+			if (Array.isArray(predVal)){
+				knexQuery = knexQuery.whereIn(predKey, predVal)
+			} else {
+				knexQuery = knexQuery.where({[predKey]: predVal})
+			}
+		})
+		const rows = await knexQuery.select(...selectFks, ...(this.cols as string[]))
 		for (let rel in this.rels){
 			for (let row of rows){
 				let relDef = this.table.relDefs[rel]
