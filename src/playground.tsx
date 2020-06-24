@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { defineDB } from './db'
-import Knex = require('knex')
+import Knex = require('knex') 
 import _ = require('lodash')
-import {ProjectInfo, Task} from './omnifocus/types'
+import {ProjectInfo, Task, TaskToTag, Context} from './omnifocus/types'
 import * as React from 'react'
 
 export const omnifocusCfg:Knex.Config = {
@@ -15,32 +15,21 @@ export const omnifocusCfg:Knex.Config = {
 type Schema = {
   ProjectInfo: ProjectInfo,
   Task: Task,
+  TaskToTag: TaskToTag,
+  Tag: Context
 }
 
 async function main() {
   const knex = Knex(omnifocusCfg)
 
-  const db = defineDB<Schema>(knex)({
-    Task: {
-      belongsTo: {
-        ProjectInfo: {name: 'project' as const, fk: 'containingProjectInfo', key: 'pk'}
-      }
-    },
-    ProjectInfo: {
-      belongsTo: {
-        Task: {name: 'task' as const, fk: 'task', key: 'persistentIdentifier'}
-      }
-    }
-  })
-      
+  const db = defineDB<Schema>(knex)({})
   const tasks = db('Task')
   const projects = db('ProjectInfo')
   
-  const inInbox = tasks.where({ inInbox: true })
+  const inInbox = tasks.where({inInbox: true})
   const notFinished = tasks.where({ dateCompleted: null })
   
-  const taskSelect = tasks.select('name', 'persistentIdentifier', 'inInbox')
-  
+  const taskSelect = tasks.select('name', 'persistentIdentifier', 'inInbox') 
   const TaskView = ({task}: {task: typeof taskSelect.single}) => (
       <li>
         <a href={`omnifocus:///task/${task.persistentIdentifier}`}>
@@ -60,12 +49,26 @@ async function main() {
   // //Now let's use the returned data. Note that the typechecker guarantees that the query matches the fields accessed
   console.log(renderToStaticMarkup(<TaskListView tasks={rows.slice(0,3)} />))
 
-  const t = await tasks.select('name', 'inInbox')
-                       .include('project', projects.select('effectiveStatus')
-                                                   .include('task', tasks.select('name'))).first()
-
-  console.info({name: t.name, projectTaskName: t.project?.task?.name})
+  const taskProject = tasks.belongsTo(projects).on('containingProjectInfo', '=', 'pk')
+  const projectTasks = projects.hasMany(tasks).on('pk', '=', 'containingProjectInfo')
+  const taskSiblings = tasks.hasMany(tasks).through(taskProject, projectTasks)
   
+  const exampleProj = await projects.select('status', 'pk').where({pk: 'k9KsNhP0_AI'})
+    .include({
+      tasks: projectTasks(tasks.select('name', 'flagged')),
+    })
+    .first()
+    
+  console.info({tasks: exampleProj.tasks.map(t => `${t.name}${t.flagged ? '!' : ''}`).join()})
+
+  const taskWithProj = await tasks.where({containingProjectInfo: 'k9KsNhP0_AI'})
+                                  .select('name', 'containingProjectInfo')
+                                  .include({project: taskProject(projects.select("status"))})
+                                  .first()
+
+                              
+  console.info(JSON.stringify(taskWithProj))
+
   knex.destroy()
 }
 

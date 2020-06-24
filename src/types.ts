@@ -14,7 +14,9 @@ export type Query = {
     where: Readonly<Record<string, any>>
 }
 
-export type AlwaysEmpty = {}
+export interface AlwaysEmpty {
+  [key: string]: never;
+}
 
 //Picks attributes from a row type
 export type Select<K, T> =

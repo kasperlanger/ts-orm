@@ -1,18 +1,28 @@
 import * as _ from 'lodash'
-import {SelectWhere} from './db'
+import {SelectWhere, InferRowType} from './db'
 
 type Rows = Array<Record<string, any>>
 
-export function loadHasMany({fk, key}: {fk: string, key: string}, target: string, loader: SelectWhere<any,any,any,any> ){
-  return async function(rows: Rows|Promise<Rows>){
-    const clonedRows: Rows = _.clone(await rows)
-    clonedRows.forEach(r => r[target] = [])
-    const rowsByKey = _.keyBy(clonedRows, key)
-    const keys = _.keys(rowsByKey)
-    const relRows:Rows = await loader.select(fk).where({[fk]: keys}).all()
-    relRows.forEach(rel => {
-      rowsByKey[rel[fk]][target].push(rel)
-    })
-    return clonedRows
-  }
+export function hasMany<FK extends string,KEY extends string>
+  ({fk, key}: {fk: FK, key: KEY}){
+    return function<L extends SelectWhere>(loader: L){
+      return async function<R extends {[Q in KEY]:any}>(rows: R[]){
+          const keys = _.map(rows, rows => rows[key])
+          const relRows:InferRowType<L>[] = await loader.select(fk).where({[fk]: keys}).all() as any
+          const relsByFk = _.groupBy(relRows, fk)
+          return rows.map(row => relsByFk[row[key]] || [])        
+      }
+    }
+}
+
+export function belongsTo<FK extends string,KEY extends string>
+  ({fk, key}: {fk: FK, key: KEY}){
+    return function<L extends SelectWhere>(loader: L){
+      return async function<R extends {[Q in FK]:any}>(rows: R[]){
+          const fKeys = _.map(rows, rows => rows[fk])
+          const relRows:InferRowType<L>[] = await loader.select(key).where({[key]: fKeys}).all() as any
+          const relsByKey = _.keyBy(relRows, key)
+          return rows.map(row => relsByKey[row[fk]] || [])        
+      }
+    }
 }
